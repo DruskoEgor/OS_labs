@@ -85,14 +85,12 @@ static void append_u64(char *buf, size_t cap, size_t *pos, uint64_t value) {
 static void append_i64(char *buf, size_t cap, size_t *pos, int64_t value) {
     if (value < 0) {
         append_char(buf, cap, pos, '-');
-        /* Не отрицаем INT64_MIN напрямую, чтобы избежать переполнения. */
         append_u64(buf, cap, pos, (uint64_t)(-(value + 1)) + 1ULL);
     } else {
         append_u64(buf, cap, pos, (uint64_t)value);
     }
 }
 
-/* Значение задано в тысячных долях единицы; здесь это микросекунды для вывода миллисекунд. */
 static void append_fixed3(char *buf, size_t cap, size_t *pos, uint64_t value) {
     append_u64(buf, cap, pos, value / 1000ULL);
     append_char(buf, cap, pos, '.');
@@ -210,7 +208,6 @@ static void *worker_main(void *opaque) {
     return NULL;
 }
 
-/* Эквивалент floor(total * part / parts) без переполнения произведения total * part. */
 static size_t partition_at(size_t total, size_t part, size_t parts) {
     size_t quotient = total / parts;
     size_t remainder = total % parts;
@@ -224,9 +221,6 @@ static int parallel_sum(const int64_t *input, int64_t *result,
     size_t workers = requested;
     int by_arrays = 0;
 
-    /* Выбираем измерение, в котором больше независимой работы. Каждый элемент
-       результата вычисляется независимо; если N мало, а K больше, распараллеливаем
-       обработку входных массивов и затем складываем частичные результаты потоков. */
     if (workers <= n) {
         by_arrays = 0;
     } else if (k > n) {
@@ -273,7 +267,6 @@ static int parallel_sum(const int64_t *input, int64_t *result,
     pthread_attr_t attr;
     int attr_ok = pthread_attr_init(&attr) == 0;
     if (attr_ok && pthread_attr_setstacksize(&attr, WORKER_STACK_SIZE) != 0) {
-        /* Если уменьшенный размер стека не поддерживается, используем атрибуты по умолчанию. */
         (void)pthread_attr_destroy(&attr);
         attr_ok = 0;
     }
@@ -335,7 +328,6 @@ static int parallel_sum(const int64_t *input, int64_t *result,
 }
 
 static uint64_t median_u64(uint64_t *values, size_t count) {
-    /* Для небольшого фиксированного числа замеров достаточно сортировки вставками. */
     for (size_t i = 1; i < count; ++i) {
         uint64_t value = values[i];
         size_t j = i;
@@ -411,8 +403,6 @@ static int auto_thread_list(size_t *list, size_t *count, size_t cores) {
         return 0;
     }
 
-    /* Подбираем до четырёх разных значений ниже числа CPU.
-       При малом числе процессоров их может быть меньше четырёх. */
     if (cores > 1) (void)append_thread(list, count, 1);
     if (cores > 2) (void)append_thread(list, count, max_size(2, cores / 4));
     if (cores > 3) (void)append_thread(list, count, max_size(3, cores / 2));
@@ -420,7 +410,6 @@ static int auto_thread_list(size_t *list, size_t *count, size_t cores) {
     for (size_t v = 1; *count < 4 && v < cores; ++v)
         (void)append_thread(list, count, v);
 
-    /* Даже при малом числе CPU проводим доступные сравнения. */
     (void)append_thread(list, count, cores);
 
     size_t high[3];
@@ -429,7 +418,6 @@ static int auto_thread_list(size_t *list, size_t *count, size_t cores) {
         high[1] = max_size(128U, cores * 4U);
         high[2] = max_size(1024U, cores * 8U);
     } else {
-        /* Выбираем три значения выше cores, вплоть до MAX_THREADS. */
         size_t span = MAX_THREADS - cores;
         high[0] = cores + span / 3U;
         high[1] = cores + (span * 2U) / 3U;
@@ -450,7 +438,7 @@ static void make_timing_row(int fd, size_t requested, size_t actual,
                             uint64_t elapsed_ns, uint64_t seq_ns,
                             const char *strategy) {
     char b[512]; size_t p = 0;
-    uint64_t ms_milli = elapsed_ns / 1000ULL; /* Наносекунды -> тысячные доли миллисекунды. */
+    uint64_t ms_milli = elapsed_ns / 1000ULL; 
     uint64_t speed_x1m = elapsed_ns == 0 ? 0 : (seq_ns * 1000000ULL + elapsed_ns / 2ULL) / elapsed_ns;
     uint64_t efficiency_x1e9 = actual == 0 ? 0 : (speed_x1m * 1000ULL + actual / 2ULL) / actual;
     append_text(b, sizeof(b), &p, "Запрошено: "); append_u64(b, sizeof(b), &p, requested);
@@ -574,7 +562,6 @@ int main(int argc, char **argv) {
     }
 
     size_t k = (size_t)k64, n = (size_t)n64;
-    /* Каждый элемент лежит в [-100, 100], поэтому сумма помещается в int64_t. */
     if (k64 > (uint64_t)(INT64_MAX / 100)) {
         say_err("Ошибка: слишком много массивов для int64_t.\n");
         return 2;
@@ -716,7 +703,6 @@ int main(int argc, char **argv) {
             append_u64(eb, sizeof(eb), &ep, (uint64_t)errcode);
             append_text(eb, sizeof(eb), &ep, "). Попробуйте меньше потоков.\n");
             emit_line(STDERR_FILENO, eb, ep);
-            /* При частично созданном наборе потоков часть par_result могла быть перезаписана. */
             for (size_t j = 0; j < n; ++j) par_result[j] = seq_result[j];
             continue;
         }
